@@ -22,12 +22,33 @@ rootProject.allprojects {
 }
 
 apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
+
+// --- Built-in Kotlin compatibility (Nimbus fork) -----------------------------
+// AGP 9 compiles Kotlin itself ("built-in Kotlin"). Applying the Kotlin Gradle
+// Plugin on top of it is a hard error, so KGP must only be applied when built-in
+// Kotlin is NOT in charge: AGP < 9, or an app that explicitly opted out with
+// `android.builtInKotlin=false`.
+//
+// Applied via `pluginManager` rather than an `apply plugin:` statement on
+// purpose. Flutter's `detectApplyingKotlinGradlePlugin` decides which plugins
+// "apply KGP" by regex-matching the *text* of this file, so even a conditional
+// `apply plugin:` line is reported as unconditional. With no textual match,
+// Flutter 3.44+ applies `kotlin-android` to this subproject itself whenever
+// built-in Kotlin is off -- same runtime behaviour, no spurious warning.
+// https://docs.flutter.dev/release/breaking-changes/migrate-to-built-in-kotlin/for-plugin-authors
+def builtInKotlinEnabled = project.findProperty('android.builtInKotlin')?.toString()?.toBoolean() ?: false
+if (!builtInKotlinEnabled) {
+    project.pluginManager.apply('kotlin-android')
+}
 
 android {
     namespace 'twilio.flutter.flutter_twilio_conversations'
 
-    compileSdkVersion 33
+    // Raised from upstream's 33. This plugin's transitive androidx dependencies
+    // (fragment 1.7.1, core 1.13.1, lifecycle 2.7.0, ...) require compileSdk >= 34,
+    // and checkReleaseAarMetadata fails under AGP 9 otherwise. Previously injected
+    // from the consuming app's root build.gradle.kts; folded in here instead.
+    compileSdk 36
 
     sourceSets {
         main.java.srcDirs += 'src/main/kotlin'
@@ -39,13 +60,29 @@ android {
     lintOptions {
         disable 'InvalidPackage'
     }
-    kotlinOptions {
-        jvmTarget = '1.8'
-    }
 }
 
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
     implementation "org.jetbrains.kotlin:kotlin-reflect:$kotlin_version"
     implementation 'com.twilio:conversations-android:6.1.1'
+}
+
+// Set the Kotlin jvmTarget through the typed extension rather than the
+// `android { kotlinOptions { } }` block (removed under built-in Kotlin) or the
+// top-level `kotlin { }` Groovy accessor (not registered when Kotlin comes from
+// AGP). Configuring KotlinAndroidProjectExtension works in both modes.
+// Target unchanged from upstream 2.0.9+19 (1.8) -- this fork only changes how
+// Kotlin is applied and configured, never what bytecode it produces.
+def configureKotlinJvmTarget = {
+    project.extensions.configure(org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension) {
+        it.compilerOptions {
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8
+        }
+    }
+}
+if (builtInKotlinEnabled) {
+    project.plugins.withId('org.jetbrains.kotlin.android') { configureKotlinJvmTarget() }
+} else {
+    configureKotlinJvmTarget()
 }
