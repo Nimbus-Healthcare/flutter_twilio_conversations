@@ -60,6 +60,18 @@ android {
     lintOptions {
         disable 'InvalidPackage'
     }
+
+    // Explicit on purpose: AGP 9's own default Java target no longer lines
+    // up with the Kotlin jvmTarget pinned below (1.8), and Gradle now hard-
+    // fails on that mismatch ("Inconsistent JVM Target Compatibility Between
+    // Java and Kotlin Tasks") instead of silently tolerating it. Pin Java to
+    // the same 1.8 the Kotlin side already targets -- matches the comment
+    // below: this fork only changes how Kotlin is applied, never what
+    // bytecode it produces.
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
 }
 
 dependencies {
